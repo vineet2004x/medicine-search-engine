@@ -1,0 +1,6 @@
+Flask
+Werkzeug
+pdfplumber
+python-docx
+scikit-learn
+pandas

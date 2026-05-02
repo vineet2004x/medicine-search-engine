@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Resume Analyzer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AI Resume Analyzer</h1>
+            <p>Optimize your resume for Applicant Tracking Systems</p>
+        </header>
+
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            <div class="flash-messages">
+              {% for message in messages %}
+                <div class="flash-message">{{ message }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        <main class="content-wrapper">
+            <div class="card upload-card">
+                <h2>Analyze Your Resume</h2>
+                <form action="/" method="POST" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="resume">Upload Resume (PDF/DOCX)</label>
+                        <input type="file" name="resume" id="resume" accept=".pdf,.docx,.doc" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="job_description">Job Description</label>
+                        <textarea name="job_description" id="job_description" rows="6" placeholder="Paste the job description here..." required></textarea>
+                    </div>
+                    <button type="submit" class="btn-primary">Analyze Now</button>
+                </form>
+            </div>
+
+            {% if show_results %}
+            <div class="card results-card">
+                <h2>Analysis Results</h2>
+                
+                <div class="score-container">
+                    <div class="score-box">
+                        <h3>Overall ATS Score</h3>
+                        <div class="score-value">{{ ats_score }}%</div>
+                    </div>
+                    <div class="score-box secondary">
+                        <h3>Keyword Match</h3>
+                        <div class="score-value">{{ similarity_score }}%</div>
+                    </div>
+                    <div class="score-box secondary">
+                        <h3>Skill Match</h3>
+                        <div class="score-value">{{ skill_match_score }}%</div>
+                    </div>
+                </div>
+
+                <div class="skills-section">
+                    <h3>Extracted Skills</h3>
+                    {% if skills %}
+                        <div class="skills-list">
+                            {% for skill in skills %}
+                                <span class="skill-tag">{{ skill }}</span>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p>No predefined skills detected.</p>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+        </main>
+    </div>
+</body>
+</html>

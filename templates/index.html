@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Resume Analyzer - Premium ATS Optimizer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Background glowing accents -->
+    <div class="glow-sphere glow-sphere-1"></div>
+    <div class="glow-sphere glow-sphere-2"></div>
+    <div class="glow-sphere glow-sphere-3"></div>
+
+    <div class="container">
+        <header class="app-header">
+            <div class="logo">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="url(#logoGrad)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M2 17L12 22L22 17" stroke="url(#logoGrad)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M2 12L12 17L22 12" stroke="url(#logoGrad)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <defs>
+                        <linearGradient id="logoGrad" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+                            <stop stop-color="#8b5cf6" />
+                            <stop offset="1" stop-color="#3b82f6" />
+                        </linearGradient>
+                    </defs>
+                </svg>
+                <span>ResuMatch <span class="badge">AI</span></span>
+            </div>
+            <h1>Optimize Your Resume for ATS Success</h1>
+            <p>Compare your professional profile with any job description, pinpoint matching skills, and instantly score your compatibility using advanced NLP analysis.</p>
+        </header>
+
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            <div class="flash-messages">
+              {% for message in messages %}
+                <div class="flash-message">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="8" x2="12" y2="12"></line>
+                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                    </svg>
+                    <span>{{ message }}</span>
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        <main class="dashboard-grid">
+            <!-- Form Card -->
+            <div class="glass-card upload-card-wrapper">
+                <h2 class="card-title">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    Analysis Inputs
+                </h2>
+                <form action="/" method="POST" enctype="multipart/form-data" id="analysisForm">
+                    <div class="form-group">
+                        <label>Upload Resume File</label>
+                        <div class="drop-zone" id="dropZone">
+                            <input type="file" name="resume" id="resume" accept=".pdf,.docx,.doc" required>
+                            <div class="drop-zone-content">
+                                <div class="icon-circle">
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                        <polyline points="14 2 14 8 20 8"></polyline>
+                                        <line x1="12" y1="18" x2="12" y2="12"></line>
+                                        <line x1="9" y1="15" x2="15" y2="15"></line>
+                                    </svg>
+                                </div>
+                                <p class="primary-text">Drag & drop your file here</p>
+                                <p class="secondary-text">PDF, DOCX, or DOC (Max 16MB)</p>
+                                <span class="file-name-display" id="fileNameDisplay">No file chosen</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="job_description">Target Job Description</label>
+                        <textarea name="job_description" id="job_description" rows="7" placeholder="Paste the complete job description details here to perform TF-IDF comparison..." required></textarea>
+                    </div>
+                    
+                    <button type="submit" class="btn-gradient" id="submitBtn">
+                        <span class="btn-text">Analyze Compatibility</span>
+                        <div class="spinner" id="btnSpinner"></div>
+                    </button>
+                </form>
+            </div>
+
+            <!-- Results Card -->
+            {% if show_results %}
+            <div class="glass-card results-card-wrapper fade-in">
+                <h2 class="card-title">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+                    ATS Assessment
+                </h2>
+
+                <!-- Premium Score Dashboard -->
+                <div class="main-score-display">
+                    <div class="radial-progress-wrapper">
+                        <!-- SVG Circle Progress -->
+                        <svg class="radial-progress" width="160" height="160" viewBox="0 0 160 160">
+                            <circle class="radial-bg" cx="80" cy="80" r="70" stroke-width="12"></circle>
+                            <circle class="radial-bar" cx="80" cy="80" r="70" stroke-width="12" 
+                                    stroke-dasharray="440" stroke-dashoffset="440" 
+                                    data-score="{{ ats_score }}" stroke="url(#scoreGrad)"></circle>
+                            <defs>
+                                <linearGradient id="scoreGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <stop offset="0%" stop-color="#8b5cf6" />
+                                    <stop offset="100%" stop-color="#ec4899" />
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                        <div class="radial-text">
+                            <span class="value">{{ ats_score }}%</span>
+                            <span class="label">ATS Match</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-header">
+                            <span>Keyword Match</span>
+                            <span class="val">{{ similarity_score }}%</span>
+                        </div>
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill indigo-fill" style="width: 0%" data-width="{{ similarity_score }}%"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card">
+                        <div class="metric-header">
+                            <span>Skill Overlap</span>
+                            <span class="val">{{ skill_match_score }}%</span>
+                        </div>
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill pink-fill" style="width: 0%" data-width="{{ skill_match_score }}%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="skills-card-section">
+                    <h3>Identified Capabilities</h3>
+                    {% if skills %}
+                        <div class="skills-flex">
+                            {% for skill in skills %}
+                                <div class="skill-pill">
+                                    <svg class="dot" width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3" fill="#8b5cf6"/></svg>
+                                    <span>{{ skill }}</span>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="no-skills-msg">No matched skills detected from our dictionary in your resume.</p>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+        </main>
+
+        <footer class="app-footer">
+            <p>&copy; 2026 ResuMatch AI. Crafted with Flask, Cosine Similarity, and Glassmorphic CSS.</p>
+        </footer>
+    </div>
+
+    <!-- Interactive JS scripts for premium visuals -->
+    <script>
+        // Drag and drop setup
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('resume');
+        const fileNameDisplay = document.getElementById('fileNameDisplay');
+        const form = document.getElementById('analysisForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const spinner = document.getElementById('btnSpinner');
+
+        if(fileInput) {
+            fileInput.addEventListener('change', (e) => {
+                if (fileInput.files.length > 0) {
+                    fileNameDisplay.textContent = fileInput.files[0].name;
+                    dropZone.classList.add('has-file');
+                } else {
+                    fileNameDisplay.textContent = 'No file chosen';
+                    dropZone.classList.remove('has-file');
+                }
+            });
+        }
+
+        if(dropZone) {
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropZone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    dropZone.classList.add('drag-over');
+                }, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    dropZone.classList.remove('drag-over');
+                }, false);
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                if(files.length > 0) {
+                    fileInput.files = files;
+                    fileNameDisplay.textContent = files[0].name;
+                    dropZone.classList.add('has-file');
+                }
+            });
+        }
+
+        // Loading spinner during submit
+        if(form) {
+            form.addEventListener('submit', () => {
+                submitBtn.disabled = true;
+                submitBtn.classList.add('loading');
+                spinner.style.display = 'block';
+            });
+        }
+
+        // Animated SVGs and progress bars on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            // Circular progress animation
+            const circle = document.querySelector('.radial-bar');
+            if (circle) {
+                const score = parseFloat(circle.getAttribute('data-score'));
+                const radius = circle.r.baseVal.value;
+                const circumference = 2 * Math.PI * radius;
+                const offset = circumference - (score / 100) * circumference;
+                
+                setTimeout(() => {
+                    circle.style.strokeDasharray = `${circumference} ${circumference}`;
+                    circle.style.strokeDashoffset = offset;
+                }, 100);
+            }
+
+            // Normal progress bar animation
+            const progressBars = document.querySelectorAll('.progress-bar-fill');
+            progressBars.forEach(bar => {
+                const targetWidth = bar.getAttribute('data-width');
+                setTimeout(() => {
+                    bar.style.width = targetWidth;
+                }, 300);
+            });
+        });
+    </script>
+</body>
+</html>

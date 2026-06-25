@@ -1,95 +1,117 @@
-import os
-from flask import Flask, render_template, request, flash, redirect, url_for
-from werkzeug.utils import secure_filename
-from core.parser import extract_text
-from core.nlp_engine import load_skills, extract_skills
-from core.matcher import calculate_match_score, calculate_ats_score
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Depends, HTTPException, status
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
-app = Flask(__name__)
-app.secret_key = 'super_secret_key_for_phase_1' # Needed for flash messages
-app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024 # 16 MB max
+import database
+import embeddings
+import search
 
-# Ensure upload directory exists
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-
-ALLOWED_EXTENSIONS = {'pdf', 'docx', 'doc'}
-
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-# Load skills globally once at startup
-PREDEFINED_SKILLS = load_skills('data/skills.csv')
-
-@app.route('/', methods=['GET', 'POST'])
-def index():
-    if request.method == 'POST':
-        # Check if the post request has the file part
-        if 'resume' not in request.files:
-            flash('No resume part')
-            return redirect(request.url)
-            
-        file = request.files['resume']
-        job_description = request.form.get('job_description', '').strip()
+# 1. Define the Lifespan Context Manager
+# This handles the startup and shutdown tasks.
+# On startup, we initialize the DB, seed data if empty, and load/generate embeddings in memory.
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("Application Startup: Initializing database...")
+    # Initialize and seed the SQLite database
+    database.init_db()
+    
+    print("Application Startup: Building in-memory embeddings cache...")
+    db_session = database.SessionLocal()
+    try:
+        # Load records and pre-compute embeddings
+        embeddings.initialize_embeddings(db_session)
+    finally:
+        db_session.close()
         
-        # If user does not select file, browser also submit an empty part without filename
-        if file.filename == '':
-            flash('No selected file')
-            return redirect(request.url)
-            
-        if not job_description:
-            flash('Please provide a job description')
-            return redirect(request.url)
-            
-        if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(filepath)
-            
-            # --- Analysis Process ---
-            
-            # 1. Parse Resume
-            resume_text = extract_text(filepath)
-            
-            # 2. Extract Skills from Resume
-            extracted_resume_skills = extract_skills(resume_text, PREDEFINED_SKILLS)
-            
-            # 3. Extract Skills from Job Description (to calculate skill match score)
-            jd_skills = extract_skills(job_description, PREDEFINED_SKILLS)
-            
-            # Calculate Skill Match Score
-            if jd_skills:
-                matched_skills = [skill for skill in extracted_resume_skills if skill in jd_skills]
-                skill_match_score = (len(matched_skills) / len(jd_skills)) * 100
-            else:
-                skill_match_score = 0.0
-                
-            # 4. Job Description Matching (TF-IDF Similarity)
-            similarity_score = calculate_match_score(resume_text, job_description)
-            
-            # 5. Composite ATS Score
-            ats_score = calculate_ats_score(skill_match_score, similarity_score)
-            
-            # Clean up the uploaded file to save space (optional but good practice)
-            try:
-                os.remove(filepath)
-            except Exception as e:
-                print(f"Error removing file: {e}")
-                
-            return render_template(
-                'index.html',
-                resume_text=resume_text, # Passed for debugging/verification, optional to display
-                skills=extracted_resume_skills,
-                similarity_score=similarity_score,
-                skill_match_score=round(skill_match_score, 2),
-                ats_score=ats_score,
-                show_results=True
-            )
-        else:
-            flash('Allowed file types are pdf, docx, doc')
-            return redirect(request.url)
+    yield
+    
+    print("Application Shutdown: Cleaning up...")
 
-    return render_template('index.html', show_results=False)
+# 2. Instantiate FastAPI
+app = FastAPI(
+    title="AI Medicine Search API",
+    description=(
+        "A simple, lightweight API demonstrating semantic search and fuzzy spelling correction "
+        "on medicine records using SQLite, SQLAlchemy, Sentence Transformers, and RapidFuzz."
+    ),
+    version="1.0.0",
+    lifespan=lifespan
+)
 
-if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+# 3. Define Pydantic Request Models
+class SearchRequest(BaseModel):
+    query: str
+
+# 4. Define Endpoints
+
+@app.get("/medicines", tags=["Medicines"])
+def get_medicines(db: Session = Depends(database.get_db)):
+    """
+    Fetch all medicine records currently stored in the SQLite database.
+    """
+    try:
+        records = db.query(database.Medicine).all()
+        return records
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database retrieval failed: {str(e)}"
+        )
+
+@app.post("/generate_embeddings", tags=["Embeddings"])
+def generate_embeddings(db: Session = Depends(database.get_db)):
+    """
+    Manually trigger regeneration of embeddings and refresh the in-memory cache.
+    Use this if you add new medicine records directly to the database.
+    """
+    try:
+        embeddings.initialize_embeddings(db)
+        return {
+            "status": "success",
+            "message": f"Successfully regenerated embeddings for {len(embeddings.medicine_records)} medicine records."
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to regenerate embeddings: {str(e)}"
+        )
+
+@app.post("/search", tags=["Search"])
+def search_medicine(request: SearchRequest, db: Session = Depends(database.get_db)):
+    """
+    Perform a medicine search using:
+    1. RapidFuzz to correct spelling mistakes of any medicine names in the query.
+    2. Sentence Transformers to create an embedding of the query.
+    3. Cosine similarity to compare the query vector with cached medicine vectors.
+    
+    Returns the single best matching medicine record and its similarity score.
+    """
+    query_text = request.query.strip()
+    if not query_text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Search query cannot be empty."
+        )
+
+    try:
+        # Run search orchestration
+        search_result = search.search_medicines(query_text)
+        return search_result
+    except ValueError as val_err:
+        # Raised if embeddings are not initialized
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(val_err)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Search failed: {str(e)}"
+        )
+
+# Optional entry point for direct script execution
+if __name__ == "__main__":
+    import uvicorn
+    # Start the Uvicorn server on port 8000
+    uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=True)

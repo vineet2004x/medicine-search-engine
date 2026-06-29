@@ -2,77 +2,203 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 from database import Medicine
 
-# 1. Initialize the SentenceTransformer model globally.
-# The 'all-MiniLM-L6-v2' model converts text into 384-dimensional vector embeddings.
-print("Initializing SentenceTransformer model ('all-MiniLM-L6-v2')...")
+search_terms = []
+
+# ---------------------------------------------------
+# Load Sentence Transformer Model
+# ---------------------------------------------------
+
+print("Initializing SentenceTransformer model...")
+
 model = SentenceTransformer(
-    'all-MiniLM-L6-v2',
+    "all-MiniLM-L6-v2",
     local_files_only=True
 )
 
-# 2. In-memory cache for loaded medicine records and their corresponding embeddings.
-# Storing these in memory allows for very fast similarity calculations.
-medicine_records = []
-medicine_embeddings = None  # Will be a numpy array of shape (N, 384)
+# ---------------------------------------------------
+# Global In-Memory Cache
+# ---------------------------------------------------
 
-def convert_to_document(medicine):
-    return (
-        f"Medicine Name: {medicine.MedicineName or ''}. "
-        f"Used For: {medicine.Uses or ''}. "
-        f"Treatment: {medicine.Uses or ''}. "
-        f"Indication: {medicine.Uses or ''}. "
-        f"Composition: {medicine.Composition or ''}. "
-        f"Manufacturer: {medicine.Manufacturer or ''}. "
-        f"Side Effects: {medicine.SideEffects or ''}."
-    )
+medicine_records = []
+
+medicine_embeddings = None
+uses_embeddings = None
+composition_embeddings = None
+manufacturer_embeddings = None
+
+
+# ---------------------------------------------------
+# Build Embeddings
+# ---------------------------------------------------
 
 def initialize_embeddings(db):
     """
-    Retrieves all medicines from the database, converts them to text documents,
-    generates their embeddings, and caches the results in memory.
-    """
-    global medicine_records, medicine_embeddings
+    Load all medicines from the database and build
+    multiple embedding indexes.
 
-    print("Querying medicines from database...")
+    1. Medicine Name + Composition
+    2. Uses
+    3. Composition
+    4. Manufacturer
+    """
+
+    global medicine_records
+    global medicine_embeddings
+    global uses_embeddings
+    global composition_embeddings
+    global manufacturer_embeddings
+    global search_terms
+
+    print("Loading medicines from database...")
+
     records = db.query(Medicine).all()
 
     if not records:
-        print("Warning: No medicines found in database to generate embeddings.")
+        print("No medicines found.")
+
         medicine_records = []
+
         medicine_embeddings = None
+        uses_embeddings = None
+        composition_embeddings = None
+        manufacturer_embeddings = None
+
         return
 
-    # Transform database models into a list of serialized dictionaries
+    # ---------------------------------------------------
+    # Cache Database Records
+    # ---------------------------------------------------
+
     medicine_records = [
         {
-            "MedicineID": r.MedicineID,
-            "MedicineName": r.MedicineName,
-            "Composition": r.Composition,
-            "Uses": r.Uses,
-            "SideEffects": r.SideEffects,
-            "Manufacturer": r.Manufacturer
+            "MedicineID": record.MedicineID,
+            "MedicineName": record.MedicineName,
+            "Composition": record.Composition,
+            "Uses": record.Uses,
+            "SideEffects": record.SideEffects,
+            "Manufacturer": record.Manufacturer
         }
-        for r in records
+        for record in records
     ]
 
-    # Generate text documents for each medicine
-    documents = [convert_to_document(r) for r in records]
+    # ---------------------------------------------------
+    # Create Documents
+    # ---------------------------------------------------
 
-    print(f"Generating embeddings for {len(documents)} medicines...")
+    medicine_documents = [
+        (
+            f"Medicine: {record.MedicineName or ''}. "
+            f"Composition: {record.Composition or ''}. "
+            f"Uses: {record.Uses or ''}. "
+            f"Manufacturer: {record.Manufacturer or ''}"
+        )
+        for record in records
+    ]
 
-    embeddings = model.encode(
-        documents,
-        show_progress_bar=True,
-        batch_size=64
+    uses_documents = [
+        record.Uses or ""
+        for record in records
+    ]
+
+    composition_documents = [
+        record.Composition or ""
+        for record in records
+    ]
+
+    manufacturer_documents = [
+        record.Manufacturer or ""
+        for record in records
+    ]
+    search_terms = list(
+        set(
+            [r.MedicineName for r in records if r.MedicineName] +
+            [r.Composition for r in records if r.Composition] +
+            [r.Manufacturer for r in records if r.Manufacturer]
+        )
     )
 
-    # Store in memory
-    medicine_embeddings = np.array(embeddings)
+    # ---------------------------------------------------
+    # Generate Medicine Embeddings
+    # ---------------------------------------------------
 
-    print("In-memory embeddings cache successfully updated.")
+    print("Generating Medicine embeddings...")
+
+    medicine_embeddings = np.array(
+        model.encode(
+            medicine_documents,
+            show_progress_bar=True,
+            batch_size=64
+        )
+    )
+
+    # ---------------------------------------------------
+    # Generate Uses Embeddings
+    # ---------------------------------------------------
+
+    print("Generating Uses embeddings...")
+
+    uses_embeddings = np.array(
+        model.encode(
+            uses_documents,
+            show_progress_bar=True,
+            batch_size=64
+        )
+    )
+
+    # ---------------------------------------------------
+    # Generate Composition Embeddings
+    # ---------------------------------------------------
+
+    print("Generating Composition embeddings...")
+
+    composition_embeddings = np.array(
+        model.encode(
+            composition_documents,
+            show_progress_bar=True,
+            batch_size=64
+        )
+    )
+
+    # ---------------------------------------------------
+    # Generate Manufacturer Embeddings
+    # ---------------------------------------------------
+
+    print("Generating Manufacturer embeddings...")
+
+    manufacturer_embeddings = np.array(
+        model.encode(
+            manufacturer_documents,
+            show_progress_bar=True,
+            batch_size=64
+        )
+    )
+
+    # ---------------------------------------------------
+    # Done
+    # ---------------------------------------------------
+
+    print("=" * 50)
+    print(f"Loaded {len(medicine_records)} medicines.")
+    print("Medicine Embeddings       ✓")
+    print("Uses Embeddings           ✓")
+    print("Composition Embeddings    ✓")
+    print("Manufacturer Embeddings   ✓")
+    print("Embedding cache ready.")
+    print("=" * 50)
+
+
+# ---------------------------------------------------
+# Query Embedding
+# ---------------------------------------------------
 
 def get_query_embedding(query: str):
     """
-    Generates a 384-dimensional vector embedding for a user's search query.
+    Convert a user query into a vector embedding.
     """
-    return model.encode(query, show_progress_bar=False)
+
+    return model.encode(
+        query,
+        show_progress_bar=False,
+        convert_to_numpy=True,
+        normalize_embeddings=True
+    )
